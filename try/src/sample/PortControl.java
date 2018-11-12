@@ -141,9 +141,52 @@ public class PortControl {
         }
     }
 
+    private static String getBinaryString(byte[] bytes ) {
+        StringBuilder sb = new StringBuilder(bytes.length * Byte.SIZE);
+        for( int i = 0; i < Byte.SIZE * bytes.length; i++ )
+            sb.append((bytes[i / Byte.SIZE] << i % Byte.SIZE & 0x80) == 0 ? '0' : '1');
+        return sb.toString();
+    }
+
+    private static byte[] getByteArray(String s ) {
+        int sLen = s.length();
+        byte[] toReturn = new byte[(sLen + Byte.SIZE - 1) / Byte.SIZE];
+        char c;
+        for (int i = 0; i < sLen; i++ )
+            if( (c = s.charAt(i)) == '1' )
+                toReturn[i / Byte.SIZE] = (byte) (toReturn[i / Byte.SIZE] | (0x80 >>> (i % Byte.SIZE)));
+            else if ( c != '0' )
+                throw new IllegalArgumentException();
+        return toReturn;
+    }
+
+    private byte[] insertBit(byte[] byteArray)
+    {
+        String resString = getBinaryString(byteArray).replaceAll("0111111","01111111");
+        resString = "01111110" + resString;
+        return getByteArray(resString);
+    }
+
+    private byte[] removeBit(byte[] byteArray)
+    {
+        String temp = getBinaryString(byteArray);
+        int start = temp.indexOf("01111110");
+        if (start >= 0) {
+            temp = temp.substring(start + 8);
+            temp = temp.replaceAll("01111111", "0111111");
+            return getByteArray(temp);
+        }
+        else {
+            return null;
+        }
+    }
+
     void sendMessage(String s) {
-        try {
-            serialPort.writeString(s);
+       try {
+            //здесь фукнциия перевода в бит-массив, добавление 1, перевод в строку)
+            byte[] byteArray = s.getBytes();
+            serialPort.writeBytes(insertBit(byteArray));
+            //serialPort.writeString(s);//LB1
         } catch (SerialPortException e) {
             System.out.println("Cannot send message: " + e.getExceptionType());
         }
@@ -153,8 +196,17 @@ public class PortControl {
         public void serialEvent(SerialPortEvent event) {
             if(event.isRXCHAR() && event.getEventValue() > 0){
                 try {
-                    String data = serialPort.readString(event.getEventValue());
-                    printMessage(data);
+                    byte[] byteArray;
+                    byteArray = removeBit(serialPort.readBytes(event.getEventValue()));
+
+                    //String data = serialPort.readString(event.getEventValue()); //LB1
+
+                    //здесь будет функция распаковки бит-массива(перевод в бит-массив,
+                    // убрать лишние 1, перевести в строку)
+                    //printMessage(data);//LB1
+                   // String data = "";
+
+                    printMessage(new String(byteArray));
                 }
                 catch (SerialPortException e) {
                     e.printStackTrace();
@@ -165,7 +217,7 @@ public class PortControl {
     }
 
     synchronized private void printMessage(String s) {
-        Platform.runLater(() -> controller.receiveMessage(s));
+        Platform.runLater(() -> controller.receiveMessage(s));  //controller.receiveMessage(s);
     }
 
 }
